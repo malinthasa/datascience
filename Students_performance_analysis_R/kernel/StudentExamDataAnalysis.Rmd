@@ -1,0 +1,575 @@
+---
+title: "Students Performance in Exams"
+output:
+  html_document:
+    toc: true
+by: Malintha Adikari
+---
+\ 
+
+#### **Environment preparation**
+
+```{r}
+Packages <- c("gridExtra", "scatterplot3d", "plot3D", "gridExtra", "plyr", "ggplot2", "magrittr", "reshape2", "data.table")
+libs <- suppressWarnings(suppressMessages(lapply(Packages, library, character.only = TRUE)))
+
+```
+\ 
+
+#### **Loading data** 
+```{r}
+std<-read.csv("../input/StudentsPerformance.csv")
+stdt<-setDT(std)
+
+```
+\ 
+
+####**Peep into the data set**
+
+First, let's use `head` command to see the first few rows of the dataset.
+```{r}
+head(stdt)
+
+```
+
+To get an overview of the dataset, we are using `summary` command.
+
+```{r}
+# Number of records in the dataset
+nrow(stdt)
+summary(stdt)
+```
+\ 
+
+**What we find:**
+
+* Dataset has 1000 records. 
+* Any column does not have null values.
+* `gernder`, `race.ethinicity`, `parental.level.of.education`, `lunch`, `test.preparation.course` columns have categorical data and `math.score`, `reasing.score` and `writing score` 
+   columns have numerical data.
+
+\ 
+
+####**Data preparation**
+
+Renaming the columns for the ease of use
+
+```{r}
+colnames(stdt)<-c("gender","race","prentEdu", "lunch", "testPrep", "mathS","readingS", "writingS")
+
+```
+
+\ 
+
+####**Analysis**
+
+\ 
+
+First of all, let's look at the student population. 
+
+```{r}
+piePlotter <- function(data,y,fill, title){
+  pie <- ggplot(data, aes(x="", y=y, fill= fill)) + geom_bar(stat="identity", width=2) + coord_polar("y", start=0) +  geom_text(aes(label = paste0(round(y/10), "%")), position =  position_stack(vjust = 0.5)) + labs(x = NULL, y = NULL, fill = NULL, title = title) + theme_classic() + theme(axis.line = element_blank(), axis.text = element_blank(), axis.ticks = element_blank(), plot.title = element_text(hjust = 0.5, color = "#000000"));
+}
+
+gernderSplit<-stdt[,.N,by=gender]
+colnames(gernderSplit)<-c("Gender","Count")
+
+parentEduSplit<-stdt[,.N,by=prentEdu]
+colnames(parentEduSplit)<-c("EducationLevel","Count")
+parentEduSplit <- parentEduSplit[order(Count),]
+
+raceSplit<-stdt[,.N,by=race]
+colnames(raceSplit)<-c("Race","Count")
+
+lunchSplit<-stdt[,.N,by=lunch]
+colnames(lunchSplit)<-c("Lunch","Count")
+
+byGnderPlot<-piePlotter(gernderSplit, gernderSplit$Count,gernderSplit$Gender, "Students by Gender")
+byParentEduLevel<-piePlotter(parentEduSplit, parentEduSplit$Count,parentEduSplit$EducationLevel, "Students by Parent's Education Level")
+byRace<-piePlotter(raceSplit, raceSplit$Count,raceSplit$Race, "Students by Race")
+byLunch<-piePlotter(lunchSplit, lunchSplit$Count,lunchSplit$Lunch, "Students by type of the Lunch")
+
+grid.arrange(byGnderPlot, byParentEduLevel,byRace, byLunch, ncol=2)
+```
+\ 
+
+
+**What we find:**
+
+* There are more female students in the population than male students
+* Majority of parents of the students have studied up to college level. 40% of parents have a degree.
+* Majority of the students belong to the race group C. Second largest student community is from race group D. Group A is the minor race group of the student population.
+* Approximately 2/3 of the students take standard lunch.
+
+\   
+
+
+Let's try to dig more into students background using parent education level, lunch category and race. 
+
+By looking at student's lunch categorization, we can see two classes of the lunch, `free/reduced` and `standard`. We will try to get insights from this categorization. Let's analyze lunch category data against `race` and the `parent's education` level of students. Here I have used the proportion between the number of students took standard lunch and free/reduced lunch.
+
+\ 
+
+**1. Against `race`**
+\ 
+
+```{r}
+lunchAgainstRace<-aggregate(gender ~ race + lunch, data = stdt, FUN = length)
+suppressMessages(lunchAgainstRace<-dcast(lunchAgainstRace, race~lunch))
+
+colnames(lunchAgainstRace)<-c("Race","free","standard")
+
+lunchAgainstRace$propostion <- lunchAgainstRace[,"standard"]/ lunchAgainstRace[,"free"]
+
+ggplot(data=lunchAgainstRace, aes(x=Race,y=propostion)) + geom_bar(stat = "identity", position = position_dodge(), fill="steelblue") + labs(y = "Proposion") + ggtitle("Standard/Free lunch proposion vs Race group")
+
+```
+
+\ 
+
+**2. Against `parent education level`**
+```{r}
+lunchAgainstParentEdu<-aggregate(gender ~ prentEdu + lunch, data = stdt, FUN = length)
+suppressMessages(lunchAgainstParentEdu<-dcast(lunchAgainstParentEdu, prentEdu~lunch))
+colnames(lunchAgainstParentEdu)<-c("prentEdu","free","standard")
+
+lunchAgainstParentEdu$propostion <- lunchAgainstParentEdu[,"standard"]/ lunchAgainstParentEdu[,"free"]
+
+ggplot(data=lunchAgainstParentEdu, aes(x=prentEdu,y=propostion)) + geom_bar(stat = "identity", fill="steelblue") + labs(x="Parent's Education Level", y="Proposion") + ggtitle("Standard/Free lunch proposion vs Parent's Education Level")
+```
+\ 
+
+**What we find:**
+
+* There is no connection between race and the number of students getting free/reduced lunch
+* Although parent's education level could be used as an indicator of the financial strength of the family, there is no connection between the parent's education level and free/reduced lunch holders.
+ 
+\ 
+
+
+**Now lets focus on analyzing exam marks**
+\ 
+
+
+Let's assume the pass mark of each subject is `45/100`.
+Analyzing the number of `passed/failed` students for each subject
+
+```{r}
+passMark<- 45
+
+passFailCounter <- function(subject,passMark){
+  subjectResult<- c(length(which(subject >=passMark)), length(which(subject < passMark)));
+}
+
+resultsBySubject<-cbind(passFailCounter(stdt$mathS, passMark),passFailCounter(stdt$readingS, passMark),passFailCounter(stdt$writingS, passMark))
+
+rownames(resultsBySubject)<-c("pass","fail")
+colnames(resultsBySubject)<-c("Maths", "Reading","Writing")
+
+meltedResultsData <- melt(resultsBySubject)
+
+meltedResultsData %>% mutate(Var1 = factor(Var1, levels = c("fail", "pass"))) %>%
+  ggplot(aes(fill=Var1, y=value, x=Var2)) + geom_bar( stat="identity", position="fill") + labs(x = "Subject", y="Pass/Fail Percentage") + guides(fill=guide_legend(title="Result")) + ggtitle("Passed & Failed Percentage vs. Subject")
+```
+\ 
+
+**What we find:**
+
+* Maths subject has the least number of passes.
+* Reading subject has the highest number of passes.
+* Every subject got more than 90% passes.
+
+\ 
+
+Now let's try to see whether the test preparation helped to pass the exams.
+
+First, let's check the percentages of the test preparation participants who passed the exam (all 3 subjects)
+
+```{r}
+suppressMessages(library(dplyr))
+allPassesData <-subset(stdt,stdt$mathS>=45 & stdt$readingS >=45 & stdt$writingS >=45) %>% select (testPrep)
+totalPassed <-nrow(allPassesData)
+allPassesData <- allPassesData[,round(.N/totalPassed*100,digits = 2),by=testPrep] 
+colnames(allPassesData) <- c("TestPreparation", "Percentage")
+allPassesData
+
+```
+\ 
+
+**What we find:**
+
+* More than 60% of students passed all 3 subjects without participating in the preparation exam.
+
+\ 
+
+Then let's focus on the student who failed the exam (failed at least 1 subject)
+
+```{r}
+suppressMessages(library(dplyr))
+allFailedData <-subset(stdt,stdt$mathS<45 | stdt$readingS <45 | stdt$writingS <45) %>% select (testPrep)
+totalFailed <-nrow(allFailedData)
+allFailedData <- allFailedData[,round(.N/totalFailed*100,digits = 2),by=testPrep] 
+colnames(allFailedData) <- c("TestPreparation", "Percentage")
+allFailedData
+
+```
+\ 
+
+**What we find:**
+
+* Around 80% of the students who failed the exam had not to face the preparation exam. 
+
+\ 
+
+Let's look at the difference of the final result between the successful students who faced the preparation test and who didn't. For this let's look at the average of the total marks of each case.
+
+\ 
+
+1. Average of the total marks of passed students who took the preparation test
+```{r}
+allPasseswithPreparation <-subset(stdt,stdt$mathS>=45 & stdt$readingS >=45 & stdt$writingS >=45 & stdt$testPrep == 'completed')
+round(sum(allPasseswithPreparation[,mathS+readingS+writingS])/nrow(allPasseswithPreparation), digits = 2)
+```
+
+\ 
+
+2. Average of the total marks of passed students who didn't take the preparation test
+```{r}
+allPasseswithPreparation <-subset(stdt,stdt$mathS>=45 & stdt$readingS >=45 & stdt$writingS >=45 & stdt$testPrep == 'none')
+round(sum(allPasseswithPreparation[,mathS+readingS+writingS])/nrow(allPasseswithPreparation), digits = 2)
+```
+
+\
+
+**What we find:**
+
+* Average mark of the student who took the preparation test and passed is larger than who didn't take the preparation exam. It shows the positive effect of taking the preparation exam before the final exam.
+
+\ 
+
+Now let's look at the students who couldn't pass the exam (all 3 subjects).
+
+\ 
+
+1. Average of the total marks of failed students who took the preparation test
+```{r}
+allFailedwithPreparation <-subset(stdt,(stdt$mathS<45 | stdt$readingS <45 | stdt$writingS <45) & stdt$testPrep == 'completed')
+round(sum(allFailedwithPreparation[,mathS+readingS+writingS])/nrow(allFailedwithPreparation), digits = 2)
+```
+
+\ 
+
+2. Average of the total marks of failed students who didn't take the preparation test
+```{r}
+allFailedwithPreparation <-subset(stdt,(stdt$mathS<45 | stdt$readingS <45 | stdt$writingS <45) & stdt$testPrep == 'none')
+round(sum(allFailedwithPreparation[,mathS+readingS+writingS])/nrow(allFailedwithPreparation), digits = 2)
+```
+
+\
+
+**What we find:**
+
+* Average mark of the student who took the preparation test and failed is larger than who didn't take the preparation exam.
+
+\ 
+
+Then, let's look at the characteristics of passed & failed students.
+
+\ 
+
+**1. Analyzing passed students by gender**
+\ 
+```{r}
+mathsPassedStudents <-subset(stdt,stdt$mathS>=45)
+readingPassedStudents <-subset(stdt,stdt$readingS>=45)
+writingPassedStudents <-subset(stdt,stdt$writingS>=45)
+
+studentDivider <- function(sbset, subjectName, selecter, selecterName, allStudents){
+  filteredSet<-sbset[,.N,by=selecter]
+  filteredSet$subject <-subjectName
+  colnames(filteredSet) <- c(selecterName, "Value", "Subject")
+  filteredSet$Value <- round(filteredSet$Value*100/stdt[,.N,by = allStudents]$N, digits = 2)
+  return(filteredSet)
+}
+
+passedStudentsByGender<-rbind(studentDivider(mathsPassedStudents, "Maths", mathsPassedStudents$gender, "Gender", stdt$gender), studentDivider(readingPassedStudents, "Reading", readingPassedStudents$gender, "Gender", stdt$gender), studentDivider(writingPassedStudents, "Writing", writingPassedStudents$gender, "Gender", stdt$gender))
+
+ggplot(data=passedStudentsByGender, aes(x=passedStudentsByGender$Subject, y=passedStudentsByGender$Value, fill=passedStudentsByGender$Gender)) +
+geom_bar(stat="identity", color="black", position=position_dodge())+theme_minimal() + labs(x="Subject", y="Number of students") + guides(fill=guide_legend(title="Gender")) + ggtitle("Passed Students vs. Gender")
+
+```
+\ 
+
+**What we find:**
+
+* Female students lead all subjects except Maths subject.
+
+\ 
+
+**2. Analyzing passed students by parent's education level**
+```{r}
+passedStudentsByParentEdu<-rbind(studentDivider(mathsPassedStudents, "Maths", mathsPassedStudents$prentEdu, "ParentEducation", stdt$prentEdu), studentDivider(readingPassedStudents, "Reading", readingPassedStudents$prentEdu, "ParentEducation", stdt$prentEdu), studentDivider(writingPassedStudents, "Writing", writingPassedStudents$prentEdu, "ParentEducation", stdt$prentEdu))
+ggplot(data=passedStudentsByParentEdu, aes(x=passedStudentsByParentEdu$Subject, y=passedStudentsByParentEdu$Value, fill=passedStudentsByParentEdu$ParentEducation)) +
+geom_bar(stat="identity", color="black", position=position_dodge())+theme_minimal() + labs(x="Subject", y="Number of students") + guides(fill=guide_legend(title="Parent's Education Level"))  + ggtitle("Passed Students vs. Parent's Education Level")
+
+```
+\ 
+
+**What we find:**
+
+* Children of the parents who qualified with master's degree dominated in all subjects. 
+* Children of the parents who have studied up to high school/some high school have earned the lowest results comparing other students.
+* Parent's education level affects the results.
+
+\ 
+
+Now let's focus on weak students in the population.
+
+\ 
+
+**1. Analyzing failed students by `gender`**
+```{r}
+mathsFailedStudents <-subset(stdt,stdt$mathS<45)
+readingFailedStudents <-subset(stdt,stdt$readingS<45)
+writingFailedStudents <-subset(stdt,stdt$writingS<45)
+
+studentDivider <- function(sbset, subjectName, selecter, selecterName, allStudents){
+  filteredSet<-sbset[,.N,by=selecter]
+  filteredSet$subject <-subjectName
+  colnames(filteredSet) <- c(selecterName, "Value", "Subject")
+  filteredSet$Value <- round(filteredSet$Value*100/stdt[,.N,by = allStudents]$N, digits = 2)
+  return(filteredSet)
+}
+
+failedStudentsByGender<-rbind(studentDivider(mathsFailedStudents, "Maths", mathsFailedStudents$gender, "Gender", stdt$gender), studentDivider(readingFailedStudents, "Reading", readingFailedStudents$gender, "Gender", stdt$gender), studentDivider(writingFailedStudents, "Writing", writingFailedStudents$gender, "Gender", stdt$gender))
+
+ggplot(data=failedStudentsByGender, aes(x=failedStudentsByGender$Subject, y=failedStudentsByGender$Value, fill=failedStudentsByGender$Gender)) +
+geom_bar(stat="identity", color="black", position=position_dodge())+theme_minimal() + labs(x="Subject", y="Number of students") + guides(fill=guide_legend(title="Gender")) + ggtitle("Failed Students vs. Gender")
+
+```
+
+\ 
+**What we find:**
+
+* More than 50% is female among the failures of Maths subject
+* Male students are the majority of the failures of Reading and writing subjects
+
+
+\ 
+
+**2. Analyzing failed students by `parent's education level`**
+```{r}
+suppressWarnings(failedStudentsByParentEdu<-rbind(studentDivider(mathsFailedStudents, "Maths", mathsFailedStudents$prentEdu, "ParentEducation", stdt$prentEdu), studentDivider(readingFailedStudents, "Reading", readingFailedStudents$prentEdu, "ParentEducation", stdt$prentEdu), studentDivider(writingFailedStudents, "Writing", writingFailedStudents$prentEdu, "ParentEducation", stdt$prentEdu)))
+ggplot(data=failedStudentsByParentEdu, aes(x=failedStudentsByParentEdu$Subject, y=failedStudentsByParentEdu$Value, fill=failedStudentsByParentEdu$ParentEducation)) +
+geom_bar(stat="identity", color="black", position=position_dodge())+theme_minimal() + labs(x="Subject", y="Number of students") + guides(fill=guide_legend(title="Parent's Education Level")) + ggtitle("Failed Students vs. Parent's Education Level")
+
+```
+
+\ 
+**What we find:**
+
+* The failure rate of the student's whose parents have master's or bachelor's degree is very low.
+* The number of failures of writing subject & whose parent's have some high school level education is significantly high.
+
+\ 
+
+Let's look at the distribution of the marks. Following is the tabulation of mean and the standard deviation of each subject.
+
+\ 
+```{r}
+
+marksDistributionSummary <-matrix(data=c(stdt[,mean(stdt$mathS)], stdt[,sd(stdt$mathS)], stdt[,mean(stdt$readingS)], stdt[,sd(stdt$readingS)], stdt[,mean(stdt$writingS)], stdt[,sd(stdt$writingS)]), nrow = 2, ncol = 3)
+rownames(marksDistributionSummary)<-c("Mean", "STD")
+colnames(marksDistributionSummary)<-c("Mathemetic", "Reading", "Writing")
+round(marksDistributionSummary,2)
+
+```
+\ 
+
+**What we find:**
+
+* Reading subject has the largest mean value and the smallest standard deviation. 
+* Comparing with the Reading subject, students got slightly less average for Writing subject.
+* Mathematics subject has the least average value comparing with the other two subjects.
+
+\ 
+
+The standard deviation of marks gives an idea about the variation of the marks of each subject. But there might be outliers, exceptional students or very weak students which cannot be identified using only mean and std values. 
+
+\
+
+Let's look at the box plot of the marks of each subject. Let's use box plots to identify weak students using the box plot. We can see there outliers at the tail of each box plot which corresponds to students earned lowest marks for that subject.
+
+\ 
+
+```{r}
+suppressWarnings(meltedExamData<-melt(stdt))
+castedExamData<-meltedExamData[,c("variable","value")]
+ggplot(castedExamData, aes(x = castedExamData$variable, y= castedExamData$value, color=castedExamData$variable )) +geom_boxplot(fill = "#E69F00") + labs(title="Marks Distribution of All Subjects",x="Subject",y="Marks") +theme(legend.position="none")
+```
+
+\ 
+\ 
+
+**Identifying the waekest students for each subject**
+
+\ 
+
+
+**Threshold values**
+
+\ 
+
+`Maths` -> 30
+\ 
+
+`Reading` -> 30
+\ 
+
+`Writing` -> 30
+
+\ 
+
+**Weakest student for Maths subject**
+\ 
+
+```{r}
+stdt$ID <- seq.int(nrow(stdt))
+weakMath<-stdt[stdt$mathS<30,]
+weakMath[,.N, by=gender]
+```
+
+\ 
+
+**What we find:**
+
+* There is significantly high number of female students among the weakest student for the maths subject.
+
+\ 
+
+```{r}
+weakMath[,.N, by=prentEdu]
+```
+\ 
+
+**What we find:**
+
+* 1/3 of the weakest math students are children of parent with some high-level education
+* There are no students in the weakest category for the maths subject whose parents have master's degree
+
+\ 
+
+**Weakest student for Writing subject**
+\ 
+
+```{r}
+weakWriting<-stdt[stdt$writingS<30,]
+weakWriting[,.N, by=gender]
+```
+\ 
+
+**What we find:**
+
+* Number of male students who are in the weakest category for the writing subject is slightly larger than female students
+
+\ 
+```{r}
+weakWriting[,.N, by=prentEdu]
+```
+
+\
+
+**What we find:**
+
+* Children of the parent's with any degree level education cannot be found among the weakest students for writing subject.
+
+\ 
+
+**Weakest student for Writing subject**
+\ 
+
+```{r}
+weakReading<-stdt[stdt$readingS<20,]
+weakReading[,.N, by=gender]
+```
+\ 
+
+
+\ 
+**What we find:**
+
+* Only 1 female student is in the weakest category for the reading subject.
+
+\ 
+
+
+```{r}
+weakReading[,.N, by=prentEdu]
+```
+\ 
+
+
+\ 
+**What we find:**
+
+* Weakest student for the reading subject is a child of a parent who has some high school level qualification.
+
+\ 
+
+**Weakest student in the population**
+
+\ 
+
+```{r}
+intersect(intersect(weakMath,weakWriting),weakReading)
+```
+\ 
+
+**Correlation between subject results**
+
+\ 
+
+1. Correlation between the results of Maths and Reading subjects
+
+\ 
+
+```{r}
+ggplot(stdt, aes(x=stdt$mathS, y=stdt$readingS)) + geom_point() + labs(x="Maths" , y = "Reading") + ggtitle("Correlation between Maths and Reading marks")
+```
+\ 
+
+2. Correlation between the results of Writing and Reading subjects
+
+\ 
+```{r}
+ggplot(stdt, aes(x=stdt$readingS, y=stdt$writingS))  + geom_point() + labs(x="Reading" , y = "Writing") + ggtitle("Correlation between Writing and Reading marks")
+```
+\ 
+
+3. Correlation between the results of Maths and Writing subjects
+
+\ 
+
+```{r}
+ggplot(stdt, aes(x=stdt$mathS, y=stdt$writingS))  + geom_point() + labs(x="Maths" , y = "Writing") + ggtitle("Correlation between Writing and Maths marks")
+```
+
+\ 
+**What we find:**
+
+* All three subjects have strong positive correlations between each other.
+
+\ 
+
+Let's visualize the correlation between the results of all subjects
+
+\ 
+
+```{r}
+
+scatter3D(x = stdt$mathS, y = stdt$readingS, z =stdt$writingS,  xlab = "Maths Marks", ylab = "Reading Marks", zlab = "Writing Marks", phi = 0, bty ="g", main = "Exam Marks of Students", ticktype = "detailed")
+
+
+```
+
